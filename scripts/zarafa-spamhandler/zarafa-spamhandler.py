@@ -15,7 +15,7 @@ def main():
     learncounter = 0
     hamlearncounter = 0
     (users, allusers, remoteusers, autolearn, autodelete, deleteafter, spamcommand, hamfolder, hammarkertoremove,
-     hamfoldercreate, hamcommand, hamlimit, autoham) = getconfig()
+     hamfoldercreate, hamcommand, hamlimit, autoham, autohaminbox) = getconfig()
     z = zarafa.Server()
 
     if allusers and not users:
@@ -26,6 +26,27 @@ def main():
         try:
             user = z.user(username)
             inboxelements = 0
+
+            if autohaminbox:
+                nospamfolder = user.store.inbox
+
+                p = re.compile(hammarkertoremove)
+                for item in nospamfolder.items():
+                    if 0 < hamlimit < inboxelements:
+                        break
+                    if autolearn:
+                        inboxelements += 1
+                        print "%s : learn ham from inbox [Subject: %s]" % (user.name, item.subject)
+                        try:
+                            hp = subprocess.Popen(shlex.split(hamcommand), stdin=subprocess.PIPE,
+                                                  stdout=subprocess.PIPE)
+                            learn, ham_output_error = hp.communicate(item.eml())
+                        except:
+                            print "failed to run [HAM] [%s]" % ham_output_err
+                        if learn:
+                            item.subject = p.sub('', item.subject)
+                            print "%s : learned [%s]" % (user.name, learn.rstrip('\n'))
+                            hamlearncounter += 1
 
             if autoham:
                 try:
@@ -57,8 +78,9 @@ def main():
                                 print "%s : learned [%s]" % (user.name, learn.rstrip('\n'))
                                 hamlearncounter += 1
 
-            for item in user.store.junk.items():
-                if autolearn:
+            if autolearn:
+                for item in user.store.junk.items():
+                    print "%s : testheader [%s]" % (user.name, item.subject)
                     if (not item.header('x-spam-flag')) or (item.header('x-spam-flag') == 'NO'):
                         print "%s : untagged spam [Subject: %s]" % (user.name, item.subject)
                         try:
@@ -73,7 +95,8 @@ def main():
                             deletejunk(user, item, delmsg)
                             learncounter += 1
 
-                if autodelete:
+            if autodelete:
+                for item in user.store.junk.items():
                     if item.received.date() < (datetime.date.today() - datetime.timedelta(days=deleteafter)):
                         delmsg = 'autodelete'
                         deletejunk(user, item, delmsg)
@@ -110,8 +133,9 @@ def getconfig():
         hamfoldercreate = config.getboolean('ham', 'create')
         hammarkertoremove = config.get('ham', 'marker')
         hamcommand = config.get('ham', 'command')
-        hamlimit = config.get('ham', 'limit')
+        hamlimit = config.getint('ham', 'limit')
         autoham = config.getboolean('ham', 'autoham')
+        autohaminbox = config.getboolean('ham', 'autohaminbox')
 
         if not users:
             allusers = True
@@ -120,7 +144,7 @@ def getconfig():
             users = users.replace(" ", "").split(",")
         return (
             users, allusers, remoteusers, autolearn, autodelete, deleteafter, spamcommand, hamfolder, hammarkertoremove,
-            hamfoldercreate, hamcommand, hamlimit, autoham)
+            hamfoldercreate, hamcommand, hamlimit, autoham, autohaminbox)
     except Exception as error:
         print error
         exit('Configuration error, please check zarafa-spamhandler.cfg')
